@@ -1,0 +1,23 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=5252
+
+See complete description, and get sources from https://github.com/jreybert/vimagit
+
+Outstanding features
+
+* See all your changes, staged changes, untracked/removed/renamed files in one unique buffer.
+* Staged/unstaged/discard changes with one key press, moving the cursor around. Stage at hunk or file level. Line and partial line staging are ongoing.
+* Start to write the commit message in one key press, commit also in one key press.
+* Visualize stashes. Apply, pop, drop are on going.
+* Add file to .gitignore file.
+
+More to come:
+
+* Line and partial line staging.
+* Vizualize and checkout branches.
+* Go through history, cherry-pick changes.
+
+    Why should I use vimagit, there are already plethora git plugins for vim?
+
+* fugitive is a very complete plugin, with a lot of functions. I use it for years, and it is a fundamental tool in my workflow. But visualize your changes and staged them in broad number of files is really a pain.
+* vim-gitgutter is very well integrated into vim, but without the ability to commit stages, it stays an informational plugin.
+
