@@ -2,6 +2,8 @@
 
 vimagit is an attempt to reproduce the magnificent emacs Magit plugin to vim. The main idea is to manage all git operations in one single buffer, as efficiently as possible.
 
+[![Build Status](https://travis-ci.org/jreybert/vimagit.svg)](https://travis-ci.org/jreybert/vimagit)
+
 ## Outstanding features
 
 * [x] See all your changes, staged changes, untracked/removed/renamed files in one unique buffer.
@@ -9,8 +11,10 @@ vimagit is an attempt to reproduce the magnificent emacs Magit plugin to vim. Th
 * [x] Start to write the commit message in one key press, commit also in one key press.
 * [x] Visualize stashes. Apply, pop, drop are on going.
 * [x] Add file to .gitignore file.
+* [ ] Chase all corner cases. Please remember that vimagit is at an early development stage. If you try vimagit and nothing is working, please don't throw it, fill an issue on github :heart: !
 
 More to come:
+* Accelerate magit buffer refreshing.
 * Line and partial line staging.
 * Vizualize and checkout branches.
 * Go through history, cherry-pick changes.
@@ -39,7 +43,7 @@ There are 3 sections:
 
 These mappings work in normal mode. They can be redefined.
 
-                S     if cursor is in a hunk, stage/unstage hunk at
+        S             if cursor is in a hunk, stage/unstage hunk at
                       cursor position
                       if cursor is in diff header, stage/unstage whole file
                       at cursor position
@@ -47,31 +51,31 @@ These mappings work in normal mode. They can be redefined.
                       stage the hunk/file.
                       On the other side, when cursor is in "Staged changes"
                       section, it will unstage hunk/file.
-                F     stage/unstage the whole file at cursor position
+        F             stage/unstage the whole file at cursor position
                       When cursor is in "Unstaged changes" section, it will
                       stage the file.
                       On the other side, when cursor is in "Staged changes"
                       section, it will unstage file.
-                D     if cursor is in a hunk, discard hunk at cursor position
+        DDD           if cursor is in a hunk, discard hunk at cursor position
                       if cursor is in diff header, discard whole file at
                       cursor position
                       When cursor is in "Unstaged changes" section, it will
                       discard the hunk/file.
-                R     refresh vimagit buffer
-                CC    if not in commit section, set commit mode to "New
+        R             refresh vimagit buffer
+        C,CC,:w<cr>   if not in commit section, set commit mode to "New
                       commit" and show "Commit message" section with brand new
                       commit message
                       if in commit section, commit the all staged changes in
                       commit mode previously set
-                CA    if not in commit section, set commit mode to "Amend
+        CA            if not in commit section, set commit mode to "Amend
                       commit" and show "Commit message" section with previous
                       commit message
                       if in commit section, commit the staged changes in
                       commit mode previously set
-                CA    if not in commit section, amend the staged changes into
-                      the previous commit
-                I     add the file under the cursor in .gitgnore
-
+        CF            amend the staged changes into the previous commit,
+                      without modifying previous commit message
+        I             add the file under the cursor in .gitgnore
+                
 ## Installation
 
 The plugin hierarchy tree respects the vim plugin standard. It is compatible

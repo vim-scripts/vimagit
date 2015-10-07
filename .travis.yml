@@ -1,0 +1,28 @@
+language: vim
+
+sudo: false
+
+os:
+  - linux
+  - osx
+
+env:
+  matrix:
+    - TEST_SUB_PATH=./
+    - TEST_SUB_PATH=books/templates/
+
+matrix:
+  allow_failures:
+    - os: osx
+
+before_script:
+  - git clone https://github.com/jreybert/djooks
+  - git clone https://github.com/junegunn/vader.vim
+
+script:
+  - ./test/run.sh . vader.vim djooks
+
+install: true
+
+after_success:
+  - ./test/merge.sh

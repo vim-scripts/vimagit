@@ -30,20 +30,115 @@ endfunction
 
 call s:set('g:magit_stage_file_mapping',        "F")
 call s:set('g:magit_stage_hunk_mapping',        "S")
-call s:set('g:magit_discard_hunk_mapping',      "D")
+call s:set('g:magit_discard_hunk_mapping',      "DDD")
+call s:set('g:magit_commit_mapping_command',    "w<cr>")
 call s:set('g:magit_commit_mapping1',           "C")
 call s:set('g:magit_commit_mapping2',           "CC")
 call s:set('g:magit_commit_amend_mapping',      "CA")
 call s:set('g:magit_commit_fixup_mapping',      "CF")
 call s:set('g:magit_reload_mapping',            "R")
 call s:set('g:magit_ignore_mapping',            "I")
+call s:set('g:magit_close_mapping',             "q")
+call s:set('g:magit_toggle_help_mapping',       "h")
 
-call s:set('g:magit_enabled',               1)
+call s:set('g:magit_enabled',                   1)
+call s:set('g:magit_show_help',                 1)
 
 " }}}
 
 " {{{ Internal functions
 
+" s:magit_top_dir: top directory of git tree
+" it is evaluated only once
+" FIXME: it won't work when playing with multiple git directories wihtin one
+" vim session
+let s:magit_top_dir=''
+" magit#top_dir: return the absolute path of current git worktree
+" return top directory
+function! magit#top_dir()
+	if ( s:magit_top_dir == '' )
+		let s:magit_top_dir=magit#strip(system("git rev-parse --show-toplevel")) . "/"
+		if ( v:shell_error != 0 )
+			echoerr "Git error: " . top_dir
+		endif
+	endif
+	return s:magit_top_dir
+endfunction
+
+" s:magit_git_dir: git directory
+" it is evaluated only once
+" FIXME: it won't work when playing with multiple git directories wihtin one
+" vim session
+let s:magit_git_dir=''
+" magit#git_dir: return the absolute path of current git worktree
+" return git directory
+function! magit#git_dir()
+	if ( s:magit_git_dir == '' )
+		let s:magit_git_dir=magit#strip(system("git rev-parse --git-dir")) . "/"
+		if ( v:shell_error != 0 )
+			echoerr "Git error: " . git_dir
+		endif
+	endif
+	return s:magit_git_dir
+endfunction
+
+" s:magit_cd_cmd: plugin variable to choose lcd/cd command, 'lcd' if exists,
+" 'cd' otherwise
+let s:magit_cd_cmd = exists('*haslocaldir') && haslocaldir() ? 'lcd ' : 'cd '
+
+" magit#system: wrapper for system, which only takes String as input in vim,
+" although it can take String or List input in neovim.
+" INFO: temporarly change pwd to git top directory, then restore to previous
+" pwd at the end of function
+" param[in] ...: command + optional args
+" return: command output as a string
+function! magit#system(...)
+	let dir = getcwd()
+	try
+		execute s:magit_cd_cmd . magit#top_dir()
+		" List as system() input is since v7.4.247, it is safe to check
+		" systemlist, which is sine v7.4.248
+		if exists('*systemlist')
+			return call('system', a:000)
+		else
+			if ( a:0 == 2 )
+				if ( type(a:2) == type([]) )
+					" ouch, this one is tough: input is very very sensitive, join
+					" MUST BE done with "\n", not '\n' !!
+					let arg=join(a:2, "\n")
+				else
+					let arg=a:2
+				endif
+				return system(a:1, arg)
+			else
+				return system(a:1)
+			endif
+		endif
+	finally
+		execute s:magit_cd_cmd . dir
+	endtry
+endfunction
+
+" magit#systemlist: wrapper for systemlist, which only exists in neovim for
+" the moment.
+" INFO: temporarly change pwd to git top directory, then restore to previous
+" pwd at the end of function
+" param[in] ...: command + optional args to execute, args can be List or String
+" return: command output as a list
+function! magit#systemlist(...)
+	let dir = getcwd()
+	try
+		execute s:magit_cd_cmd . magit#top_dir()
+		" systemlist since v7.4.248
+		if exists('*systemlist')
+			return call('systemlist', a:000)
+		else
+			return split(call('magit#system', a:000), '\n')
+		endif
+	finally
+		execute s:magit_cd_cmd . dir
+	endtry
+endfunction
 
 " magit#underline: helper function to underline a string
 " param[in] title: string to underline
@@ -89,7 +184,7 @@ function! magit#get_diff(mode)
 		let status_position=1
 	endif
 
-	let status_list=systemlist("git status --porcelain")
+	let status_list=magit#systemlist("git status --porcelain")
 	for file_status_line in status_list
 		let file_status=file_status_line[status_position]
 		let file_name=substitute(file_status_line, '.. \(.*\)$', '\1', '')
@@ -108,23 +203,66 @@ function! magit#get_diff(mode)
 		else
 			let file_name='"' . file_name . '"'
 		endif
-		let diff_list=systemlist("git diff " . staged_flag . "--no-color --patch -- " . dev_null . " " .  file_name )
-		for diff_line in diff_list
-			put =diff_line
-		endfor
+		let diff_cmd="git diff --no-ext-diff " . staged_flag . "--no-color --patch -- " . dev_null . " " .  file_name
+		let diff_list=magit#systemlist(diff_cmd)
+		if ( empty(diff_list) )
+			echoerr "diff command \"" . diff_cmd . "\" returned nothing"
+		endif
+		silent put =diff_list
 		" add missing new line
 		put =''
 	endfor
+endfunction
+
+let s:magit_inline_help = {
+			\ 'staged': [
+\'S      if cursor in diff header, unstage file',
+\'       if cursor in hunk, unstage hunk',
+\'F      if cursor in diff header or hunk, unstage file',
+\],
+			\ 'unstaged': [
+\'S      if cursor in diff header, stage file',
+\'       if cursor in hunk, stage hunk',
+\'F      if cursor in diff header or hunk, stage file',
+\'DDD    discard file changes (warning, changes will be lost)',
+\'I      add file in .gitgnore',
+\],
+			\ 'global': [
+\'C CC   set commit mode to normal, and show "Commit message" section',
+\'CA     set commit mode amend, and show "Commit message" section with previous',
+\'       commit message',
+\'CF     amend staged changes to previous commit without modifying the previous',
+\'       commit message',
+\'R      refresh magit buffer',
+\'h      toggle help showing in magit buffer',
+\'To disable this help by default, add "let g:magit_show_help=0" to .vimrc',
+\],
+			\ 'commit': [
+\'C CC   commit all staged changes with commit mode previously set (normal or',
+\':w<cr> amend) with message written in this section',
+\],
+\}
+
+function! magit#get_inline_help_line_nb(section)
+	return ( g:magit_show_help == 1 ) ?
+		\ len(s:magit_inline_help[a:section]) : 0
+endfunction
+
+function! magit#section_help(section)
+	if ( g:magit_show_help == 1 )
+		silent put =s:magit_inline_help[a:section]
+	endif
 endfunction
 
 " magit#get_staged: this function writes in current buffer all staged files
 " WARNING: this function writes in file, it should only be called through
 " protected functions like magit#update_buffer
 function! magit#get_staged()
-	put =''
-	put =g:magit_sections['staged']
-	put =magit#underline(g:magit_sections['staged'])
-	put =''
+	silent put =''
+	silent put =g:magit_sections['staged']
+	call magit#section_help('staged')
+	silent put =magit#underline(g:magit_sections['staged'])
+	silent put =''
 
 	call magit#get_diff('staged')
 endfunction
@@ -134,10 +272,11 @@ endfunction
 " WARNING: this function writes in file, it should only be called through
 " protected functions like magit#update_buffer
 function! magit#get_unstaged()
-	put =''
-	put =g:magit_sections['unstaged']
-	put =magit#underline(g:magit_sections['unstaged'])
-	put =''
+	silent put =''
+	silent put =g:magit_sections['unstaged']
+	call magit#section_help('unstaged')
+	silent put =magit#underline(g:magit_sections['unstaged'])
+	silent put =''
 
 	call magit#get_diff('unstaged')
 endfunction
@@ -146,16 +285,16 @@ endfunction
 " WARNING: this function writes in file, it should only be called through
 " protected functions like magit#update_buffer
 function! magit#get_stashes()
-	silent! let stash_list=systemlist("git stash list")
+	silent! let stash_list=magit#systemlist("git stash list")
 	if ( v:shell_error != 0 )
 		echoerr "Git error: " . stash_list
 	endif
 
 	if (!empty(stash_list))
-		put =''
-		put =g:magit_sections['stash']
-		put =magit#underline(g:magit_sections['stash'])
-		put =''
+		silent put =''
+		silent put =g:magit_sections['stash']
+		silent put =magit#underline(g:magit_sections['stash'])
+		silent put =''
 
 		for stash in stash_list
 			let stash_id=substitute(stash, '^\(stash@{\d\+}\):.*$', '\1', '')
@@ -187,25 +326,34 @@ function! magit#get_commit_section()
 	elseif ( s:magit_commit_mode == 'CA' )
 		let commit_mode_str="amend"
 	endif
-	put =''
-	put =g:magit_sections['commit_start']
-	put ='Commit mode: '.commit_mode_str
-	put =magit#underline(g:magit_sections['commit_start'])
-	put =''
+	silent put =''
+	silent put =g:magit_sections['commit_start']
+	silent put ='Commit mode: '.commit_mode_str
+	call magit#section_help('commit')
+	silent put =magit#underline(g:magit_sections['commit_start'])
+	silent put =''
 
-	silent! let git_dir=magit#strip(system("git rev-parse --git-dir"))
-	if ( v:shell_error != 0 )
-		echoerr "Git error: " . git_dir
-	endif
+	let git_dir=magit#git_dir()
 	" refresh the COMMIT_EDITMSG file
 	if ( s:magit_commit_mode == 'CC' )
-		silent! call system("GIT_EDITOR=/bin/false git commit -e 2> /dev/null")
+		silent! call magit#system("GIT_EDITOR=/bin/false git commit -e 2> /dev/null")
 	elseif ( s:magit_commit_mode == 'CA' )
-		silent! call system("GIT_EDITOR=/bin/false git commit --amend -e 2> /dev/null")
+		silent! call magit#system("GIT_EDITOR=/bin/false git commit --amend -e 2> /dev/null")
 	endif
-	let commit_msg=magit#join_list(filter(readfile(git_dir . '/COMMIT_EDITMSG'), 'v:val !~ "^#"'))
+	let comment_char=magit#comment_char()
+	let commit_msg=magit#join_list(filter(readfile(git_dir . 'COMMIT_EDITMSG'), 'v:val !~ "^' . comment_char . '"'))
 	put =commit_msg
 	put =g:magit_sections['commit_end']
+endfunction
+
+" magit#comment_char: this function gets the commentChar from git config
+function! magit#comment_char()
+	silent! let git_result=magit#strip(magit#system("git config --get core.commentChar"))
+	if ( v:shell_error != 0 )
+		return '#'
+	else
+		return git_result
+	endif
 endfunction
 
 " magit#search_block: helper function, to get a block of text, giving a start
@@ -276,16 +424,19 @@ endfunction
 " return no
 function! magit#git_commit(mode)
 	if ( a:mode == 'CF' )
-		silent let git_result=system("git commit --amend -C HEAD")
+		silent let git_result=magit#system("git commit --amend -C HEAD")
 	else
 		let commit_section_pat_start='^'.g:magit_sections['commit_start'].'$'
 		let commit_section_pat_end='^'.g:magit_sections['commit_end'].'$'
-		let [ret, commit_msg]=magit#search_block([commit_section_pat_start, +3], [ [commit_section_pat_end, -1] ], "")
+		let commit_jump_line = 3 + magit#get_inline_help_line_nb('commit')
+		let [ret, commit_msg]=magit#search_block(
+		 \ [commit_section_pat_start, commit_jump_line],
+		 \ [ [commit_section_pat_end, -1] ], "")
 		let amend_flag=""
 		if ( a:mode == 'CA' )
 			let amend_flag=" --amend "
 		endif
-		silent! let git_result=system("git commit " . amend_flag . " --file -", commit_msg)
+		silent! let git_result=magit#system("git commit " . amend_flag . " --file - ", commit_msg)
 	endif
 	if ( v:shell_error != 0 )
 		echoerr "Git error: " . git_result
@@ -353,13 +504,13 @@ endfunction
 " return: no
 function! magit#git_apply(selection)
 	let selection = a:selection
-	if ( selection[-1] != '' )
+	if ( selection[-1] !~ '^\s*$' )
 		let selection += [ '' ]
 	endif
-	silent let git_result=system("git apply --cached -", selection)
+	silent let git_result=magit#system("git apply --cached -", selection)
 	if ( v:shell_error != 0 )
 		echoerr "Git error: " . git_result
-		echoerr "Tried to unaply this"
+		echoerr "Tried to aply this"
 		echoerr string(a:selection)
 	endif
 endfunction
@@ -376,10 +527,10 @@ function! magit#git_unapply(selection, mode)
 		let cached_flag=' --cached '
 	endif
 	let selection = a:selection
-	if ( selection[-1] != '' )
+	if ( selection[-1] !~ '^\s*$' )
 		let selection += [ '' ]
 	endif
-	silent let git_result=system("git apply " . cached_flag . " --reverse - ", selection)
+	silent let git_result=magit#system("git apply " . cached_flag . " --reverse - ", selection)
 	if ( v:shell_error != 0 )
 		echoerr "Git error: " . git_result
 		echoerr "Tried to unaply this"
@@ -410,6 +561,7 @@ function! magit#update_buffer()
 	let l:winview = winsaveview()
 	silent! %d
 	
+	call magit#section_help('global')
 	if ( s:magit_commit_mode != '' )
 		call magit#get_commit_section()
 	endif
@@ -422,16 +574,25 @@ function! magit#update_buffer()
 	if ( s:magit_commit_mode != '' )
 		let commit_section_pat_start='^'.g:magit_sections['commit_start'].'$'
 		silent! let section_line=search(commit_section_pat_start, "w")
-		silent! call cursor(section_line+3, 0)
+		silent! call cursor(section_line+3+magit#get_inline_help_line_nb('commit'), 0)
 	endif
 
 	set filetype=magit
 
 endfunction
 
+function! magit#toggle_help()
+	let g:magit_show_help = ( g:magit_show_help == 0 ) ? 1 : 0
+	call magit#update_buffer()
+endfunction
+
 " magit#show_magit: prepare and show magit buffer
 " it also set local mappings to magit buffer
 function! magit#show_magit(orientation)
+	if ( magit#strip(system("git rev-parse --is-inside-work-tree")) != 'true' )
+		echoerr "Magit must be started from a git repository"
+		return
+	endif
 	vnew 
 	setlocal buftype=nofile
 	setlocal bufhidden=delete
@@ -448,11 +609,14 @@ function! magit#show_magit(orientation)
 	execute "nnoremap <buffer> <silent> " . g:magit_stage_hunk_mapping .   " :call magit#stage_hunk()<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_discard_hunk_mapping . " :call magit#discard_hunk()<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_reload_mapping .       " :call magit#update_buffer()<cr>"
+	execute "cnoremap <buffer> <silent> " . g:magit_commit_mapping_command." :call magit#commit_command('CC')<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_commit_mapping1 .      " :call magit#commit_command('CC')<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_commit_mapping2 .      " :call magit#commit_command('CC')<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_commit_amend_mapping . " :call magit#commit_command('CA')<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_commit_fixup_mapping . " :call magit#commit_command('CF')<cr>"
 	execute "nnoremap <buffer> <silent> " . g:magit_ignore_mapping .       " :call magit#ignore_file()<cr>"
+	execute "nnoremap <buffer> <silent> " . g:magit_close_mapping .        " :close<cr>"
+	execute "nnoremap <buffer> <silent> " . g:magit_toggle_help_mapping .  " :call magit#toggle_help()<cr>"
 	
 	call magit#update_buffer()
 	execute "normal! gg"
@@ -573,11 +737,7 @@ function! magit#ignore_file()
 		echoerr "Can not find file to ignore"
 		return
 	endif
-	let top_dir=magit#strip(system("git rev-parse --show-toplevel")) . "/"
-	if ( v:shell_error != 0 )
-		echoerr "Git error: " . top_dir
-	endif
-	call magit#append_file(top_dir . "/.gitignore", [ ignore_file ] )
+	call magit#append_file(magit#top_dir() . ".gitignore", [ ignore_file ] )
 	call magit#update_buffer()
 endfunction
 
