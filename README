@@ -1,5 +1,15 @@
 This is a mirror of http://www.vim.org/scripts/script.php?script_id=5252
 
+This is a new (and hopefully very efficient) way to use git from vim.
+
+From a very single vim buffer, you can perform all basic git operations. To name a few:
+
+* Visualize all diffs in your git repository.
+* Stage files/hunks/parts of hunks with single key S.
+* Write or amend your commit message and commit.
+
+This workflow is 100% inspired from magnificent emacs Magit plugin.
+
 See complete description, and get sources from https://github.com/jreybert/vimagit
 
 Outstanding features
